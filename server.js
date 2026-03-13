@@ -99,6 +99,10 @@ io.on('connection', (socket) => {
           down: !!input.down,
           left: !!input.left,
           right: !!input.right,
+          strafeLeft: !!input.strafeLeft,
+          strafeRight: !!input.strafeRight,
+          strafeUp: !!input.strafeUp,
+          strafeDown: !!input.strafeDown,
           shoot: !!input.shoot,
         };
       }

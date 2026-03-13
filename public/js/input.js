@@ -5,14 +5,22 @@ class InputManager {
       down: false,
       left: false,
       right: false,
+      strafeLeft: false,
+      strafeRight: false,
+      strafeUp: false,
+      strafeDown: false,
       shoot: false,
     };
 
     this._keyMap = {
-      ArrowUp: 'up', KeyW: 'up',
-      ArrowDown: 'down', KeyS: 'down',
-      ArrowLeft: 'left', KeyA: 'left',
-      ArrowRight: 'right', KeyD: 'right',
+      ArrowUp: 'up',
+      ArrowDown: 'down',
+      ArrowLeft: 'left',
+      ArrowRight: 'right',
+      KeyW: 'strafeUp',
+      KeyS: 'strafeDown',
+      KeyA: 'strafeLeft',
+      KeyD: 'strafeRight',
       Space: 'shoot',
     };
 

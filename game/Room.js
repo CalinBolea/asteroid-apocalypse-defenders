@@ -34,7 +34,7 @@ class Room {
       x: C.MAP_WIDTH / 2 + (Math.random() - 0.5) * 200,
       y: C.MAP_HEIGHT / 2 + (Math.random() - 0.5) * 200,
       angle: -Math.PI / 2,
-      input: { up: false, down: false, left: false, right: false, shoot: false },
+      input: { up: false, down: false, left: false, right: false, strafeLeft: false, strafeRight: false, strafeUp: false, strafeDown: false, shoot: false },
       shootCooldown: 0,
       invincible: C.RESPAWN_INVINCIBILITY,
       alive: true,
@@ -174,6 +174,12 @@ class Room {
         p.x -= Math.cos(p.angle) * C.SHIP_SPEED * 0.5;
         p.y -= Math.sin(p.angle) * C.SHIP_SPEED * 0.5;
       }
+
+      // Strafe (absolute screen directions)
+      if (p.input.strafeLeft)  p.x -= C.SHIP_SPEED;
+      if (p.input.strafeRight) p.x += C.SHIP_SPEED;
+      if (p.input.strafeUp)    p.y -= C.SHIP_SPEED;
+      if (p.input.strafeDown)  p.y += C.SHIP_SPEED;
 
       // Wrap around
       if (p.x < 0) p.x = C.MAP_WIDTH;

@@ -184,13 +184,14 @@ class Renderer {
     ctx.fillText('Players in room:', cx, cy - 50);
 
     players.forEach((p, i) => {
+      const readyTag = p.ready ? ' \u2714' : '';
       ctx.fillStyle = p.color;
-      ctx.fillText(p.name, cx, cy - 20 + i * 28);
+      ctx.fillText(p.name + readyTag, cx, cy - 20 + i * 28);
     });
 
     ctx.fillStyle = '#888';
     ctx.font = '16px Courier New';
-    ctx.fillText('Press SPACE or click START to begin', cx, cy + 120);
+    ctx.fillText('Press SPACE or click READY when you\'re ready', cx, cy + 120);
   }
 
   drawGameOver(score, wave) {

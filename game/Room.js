@@ -38,6 +38,7 @@ class Room {
       shootCooldown: 0,
       invincible: C.RESPAWN_INVINCIBILITY,
       alive: true,
+      ready: false,
     };
 
     this.players.set(socket.id, player);
@@ -52,6 +53,30 @@ class Room {
       return true; // room should be removed
     }
     return false;
+  }
+
+  setPlayerReady(socketId) {
+    const player = this.players.get(socketId);
+    if (!player || player.ready) return;
+    player.ready = true;
+    this.io.to(this.code).emit('lobby-update', this._getLobbyPlayers());
+    this.checkAllReady();
+  }
+
+  checkAllReady() {
+    if (this.players.size < 1) return;
+    for (const [, p] of this.players) {
+      if (!p.ready) return;
+    }
+    this.startGame();
+  }
+
+  _getLobbyPlayers() {
+    const players = [];
+    for (const [, p] of this.players) {
+      players.push({ id: p.id, name: p.name, color: p.color, ready: p.ready });
+    }
+    return players;
   }
 
   startGame() {
@@ -273,6 +298,7 @@ class Room {
         angle: p.angle,
         alive: p.alive,
         invincible: p.invincible > 0,
+        ready: p.ready,
       });
     }
 

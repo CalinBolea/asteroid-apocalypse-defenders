@@ -70,17 +70,23 @@
     window.location.href = './';
   });
 
-  // Start button
-  startBtn.addEventListener('click', () => {
-    socket.emit('start-game');
-    startBtn.classList.add('hidden');
+  socket.on('lobby-update', (players) => {
+    roomPlayers = players;
   });
 
-  // Also allow space to start when in waiting state
+  // Ready button
+  startBtn.addEventListener('click', () => {
+    socket.emit('player-ready');
+    startBtn.disabled = true;
+    startBtn.textContent = 'WAITING...';
+  });
+
+  // Also allow space to ready when in waiting state
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'Space' && !startBtn.classList.contains('hidden')) {
-      socket.emit('start-game');
-      startBtn.classList.add('hidden');
+    if (e.code === 'Space' && !startBtn.classList.contains('hidden') && !startBtn.disabled) {
+      socket.emit('player-ready');
+      startBtn.disabled = true;
+      startBtn.textContent = 'WAITING...';
     }
   });
 

@@ -77,16 +77,16 @@ io.on('connection', (socket) => {
       code: room.code,
       playerId: socket.id,
       state: room.state,
-      players: Array.from(room.players.values()).map(p => ({ id: p.id, name: p.name, color: p.color })),
+      players: Array.from(room.players.values()).map(p => ({ id: p.id, name: p.name, color: p.color, ready: p.ready })),
     });
 
     // Notify others
     socket.to(room.code).emit('player-joined', { id: socket.id, name, color: room.players.get(socket.id).color });
   });
 
-  socket.on('start-game', () => {
+  socket.on('player-ready', () => {
     if (currentRoom) {
-      currentRoom.startGame();
+      currentRoom.setPlayerReady(socket.id);
     }
   });
 

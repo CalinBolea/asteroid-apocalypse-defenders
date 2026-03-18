@@ -24,6 +24,15 @@ class InputManager {
       Space: 'shoot',
     };
 
+    this._upgradeMap = {
+      Digit1: 'moveSpeed',
+      Digit2: 'attackSpeed',
+      Digit3: 'shield',
+      Digit4: 'dualCannon',
+    };
+
+    this._upgradePurchases = [];
+
     window.addEventListener('keydown', (e) => this._onKey(e, true));
     window.addEventListener('keyup', (e) => this._onKey(e, false));
   }
@@ -33,10 +42,24 @@ class InputManager {
     if (action) {
       e.preventDefault();
       this.keys[action] = down;
+      return;
+    }
+
+    if (down) {
+      const upgrade = this._upgradeMap[e.code];
+      if (upgrade) {
+        this._upgradePurchases.push(upgrade);
+      }
     }
   }
 
   getState() {
     return { ...this.keys };
+  }
+
+  getUpgradePurchases() {
+    const purchases = this._upgradePurchases;
+    this._upgradePurchases = [];
+    return purchases;
   }
 }

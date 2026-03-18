@@ -10,7 +10,7 @@ class Room {
     this.score = 0;
     this.lives = C.STARTING_LIVES;
     this.wave = 0;
-    this.state = 'waiting'; // waiting | playing | gameover
+    this.state = 'waiting'; // waiting | playing | upgrading | gameover
     this.tickInterval = null;
     this.broadcastInterval = null;
     this.waveTimeout = null;
@@ -39,6 +39,8 @@ class Room {
       invincible: C.RESPAWN_INVINCIBILITY,
       alive: true,
       ready: false,
+      upgradePoints: 0,
+      upgrades: { moveSpeed: 0, attackSpeed: 0, shield: false, dualCannon: false },
     };
 
     this.players.set(socket.id, player);
@@ -56,6 +58,7 @@ class Room {
   }
 
   setPlayerReady(socketId) {
+    if (this.state !== 'waiting' && this.state !== 'upgrading') return;
     const player = this.players.get(socketId);
     if (!player || player.ready) return;
     player.ready = true;
@@ -68,7 +71,11 @@ class Room {
     for (const [, p] of this.players) {
       if (!p.ready) return;
     }
-    this.startGame();
+    if (this.state === 'waiting') {
+      this.startGame();
+    } else if (this.state === 'upgrading') {
+      this.resumeFromUpgrade();
+    }
   }
 
   _getLobbyPlayers() {
@@ -97,6 +104,26 @@ class Room {
   }
 
   spawnWave() {
+    if (this.wave >= 1) {
+      // Enter upgrading state between waves
+      for (const [, p] of this.players) {
+        p.upgradePoints += C.UPGRADE_POINTS_PER_WAVE;
+        p.ready = false;
+      }
+      this.state = 'upgrading';
+      clearTimeout(this.waveTimeout);
+      this.io.to(this.code).emit('lobby-update', this._getLobbyPlayers());
+      return;
+    }
+    this._startWave();
+  }
+
+  resumeFromUpgrade() {
+    this.state = 'playing';
+    this._startWave();
+  }
+
+  _startWave() {
     this.wave++;
     const count = C.WAVE_BASE_COUNT + (this.wave - 1) * C.WAVE_INCREMENT;
 
@@ -166,20 +193,21 @@ class Room {
       if (p.input.right) p.angle += C.SHIP_ROTATION_SPEED;
 
       // Movement
+      const speed = C.SHIP_SPEED + p.upgrades.moveSpeed * C.MOVE_SPEED_BONUS;
       if (p.input.up) {
-        p.x += Math.cos(p.angle) * C.SHIP_SPEED;
-        p.y += Math.sin(p.angle) * C.SHIP_SPEED;
+        p.x += Math.cos(p.angle) * speed;
+        p.y += Math.sin(p.angle) * speed;
       }
       if (p.input.down) {
-        p.x -= Math.cos(p.angle) * C.SHIP_SPEED * 0.5;
-        p.y -= Math.sin(p.angle) * C.SHIP_SPEED * 0.5;
+        p.x -= Math.cos(p.angle) * speed * 0.5;
+        p.y -= Math.sin(p.angle) * speed * 0.5;
       }
 
       // Strafe (absolute screen directions)
-      if (p.input.strafeLeft)  p.x -= C.SHIP_SPEED;
-      if (p.input.strafeRight) p.x += C.SHIP_SPEED;
-      if (p.input.strafeUp)    p.y -= C.SHIP_SPEED;
-      if (p.input.strafeDown)  p.y += C.SHIP_SPEED;
+      if (p.input.strafeLeft)  p.x -= speed;
+      if (p.input.strafeRight) p.x += speed;
+      if (p.input.strafeUp)    p.y -= speed;
+      if (p.input.strafeDown)  p.y += speed;
 
       // Wrap around
       if (p.x < 0) p.x = C.MAP_WIDTH;
@@ -189,16 +217,21 @@ class Room {
 
       // Shooting
       if (p.input.shoot && p.shootCooldown <= 0) {
-        this.bullets.push({
-          id: this._id(),
-          x: p.x + Math.cos(p.angle) * C.SHIP_RADIUS,
-          y: p.y + Math.sin(p.angle) * C.SHIP_RADIUS,
-          vx: Math.cos(p.angle) * C.BULLET_SPEED,
-          vy: Math.sin(p.angle) * C.BULLET_SPEED,
-          ownerId: p.id,
-          life: C.BULLET_LIFETIME,
-        });
-        p.shootCooldown = 8;
+        const angles = p.upgrades.dualCannon
+          ? [p.angle - C.DUAL_CANNON_SPREAD, p.angle + C.DUAL_CANNON_SPREAD]
+          : [p.angle];
+        for (const a of angles) {
+          this.bullets.push({
+            id: this._id(),
+            x: p.x + Math.cos(a) * C.SHIP_RADIUS,
+            y: p.y + Math.sin(a) * C.SHIP_RADIUS,
+            vx: Math.cos(a) * C.BULLET_SPEED,
+            vy: Math.sin(a) * C.BULLET_SPEED,
+            ownerId: p.id,
+            life: C.BULLET_LIFETIME,
+          });
+        }
+        p.shootCooldown = Math.max(C.MIN_SHOOT_COOLDOWN, 8 - p.upgrades.attackSpeed * C.ATTACK_SPEED_BONUS);
       }
     }
 
@@ -269,6 +302,11 @@ class Room {
         const dx = a.x - p.x;
         const dy = a.y - p.y;
         if (dx * dx + dy * dy < (a.radius + C.SHIP_RADIUS) * (a.radius + C.SHIP_RADIUS)) {
+          if (p.upgrades.shield) {
+            p.upgrades.shield = false;
+            this.asteroids.splice(ai, 1);
+            break;
+          }
           this.lives--;
           this.asteroids.splice(ai, 1);
           // Respawn player at center
@@ -305,6 +343,8 @@ class Room {
         alive: p.alive,
         invincible: p.invincible > 0,
         ready: p.ready,
+        upgradePoints: p.upgradePoints,
+        upgrades: { ...p.upgrades },
       });
     }
 

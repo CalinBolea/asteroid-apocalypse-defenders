@@ -109,6 +109,39 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('purchase-upgrade', (type) => {
+    if (!currentRoom || currentRoom.state !== 'upgrading') return;
+    const player = currentRoom.players.get(socket.id);
+    if (!player) return;
+
+    const costs = {
+      moveSpeed: C.UPGRADE_COST_MOVE_SPEED,
+      attackSpeed: C.UPGRADE_COST_ATTACK_SPEED,
+      shield: C.UPGRADE_COST_SHIELD,
+      dualCannon: C.UPGRADE_COST_DUAL_CANNON,
+    };
+
+    const cost = costs[type];
+    if (cost === undefined) return;
+    if (player.upgradePoints < cost) return;
+
+    if (type === 'moveSpeed') {
+      if (player.upgrades.moveSpeed >= C.MAX_MOVE_SPEED_LEVEL) return;
+      player.upgrades.moveSpeed++;
+    } else if (type === 'attackSpeed') {
+      if (player.upgrades.attackSpeed >= C.MAX_ATTACK_SPEED_LEVEL) return;
+      player.upgrades.attackSpeed++;
+    } else if (type === 'shield') {
+      if (player.upgrades.shield) return;
+      player.upgrades.shield = true;
+    } else if (type === 'dualCannon') {
+      if (player.upgrades.dualCannon) return;
+      player.upgrades.dualCannon = true;
+    }
+
+    player.upgradePoints -= cost;
+  });
+
   socket.on('disconnect', () => {
     if (currentRoom) {
       const shouldRemove = currentRoom.removePlayer(socket.id);

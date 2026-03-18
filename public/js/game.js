@@ -56,6 +56,16 @@
     gameState = state;
     if (state.state === 'playing') {
       startBtn.classList.add('hidden');
+    } else if (state.state === 'upgrading') {
+      startBtn.textContent = 'READY';
+      startBtn.disabled = false;
+      startBtn.classList.remove('hidden');
+      // Mark as waiting if we already readied up
+      const me = state.players.find(p => p.id === playerId);
+      if (me && me.ready) {
+        startBtn.disabled = true;
+        startBtn.textContent = 'WAITING...';
+      }
     }
   });
 
@@ -93,12 +103,20 @@
   // Input sending (throttled ~20/s)
   let lastInput = null;
   setInterval(() => {
-    if (!gameState || gameState.state !== 'playing') return;
-    const current = input.getState();
-    const str = JSON.stringify(current);
-    if (str !== lastInput) {
-      socket.emit('player-input', current);
-      lastInput = str;
+    if (!gameState) return;
+    if (gameState.state === 'playing') {
+      const current = input.getState();
+      const str = JSON.stringify(current);
+      if (str !== lastInput) {
+        socket.emit('player-input', current);
+        lastInput = str;
+      }
+    }
+    if (gameState.state === 'upgrading') {
+      const purchases = input.getUpgradePurchases();
+      for (const type of purchases) {
+        socket.emit('purchase-upgrade', type);
+      }
     }
   }, 50);
 
@@ -122,6 +140,16 @@
       gameState.asteroids.forEach(a => renderer.drawAsteroid(a, cam));
       gameState.players.forEach(p => renderer.drawShip(p, cam));
       renderer.drawHUD(gameState);
+    } else if (gameState && gameState.state === 'upgrading') {
+      const cam = renderer.getCamera(playerId, gameState.players);
+      renderer.drawGrid(cam);
+      gameState.asteroids.forEach(a => renderer.drawAsteroid(a, cam));
+      gameState.players.forEach(p => renderer.drawShip(p, cam));
+      renderer.drawHUD(gameState);
+      const localPlayer = gameState.players.find(p => p.id === playerId);
+      if (localPlayer) {
+        renderer.drawUpgradeMenu(localPlayer, gameState.players);
+      }
     } else {
       // Waiting state
       renderer.drawWaiting(roomPlayers, roomCode);

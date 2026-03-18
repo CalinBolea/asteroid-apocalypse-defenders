@@ -96,6 +96,20 @@ class Renderer {
     ctx.globalAlpha = 1;
     ctx.restore();
 
+    // Shield ring
+    if (player.upgrades && player.upgrades.shield) {
+      const shieldR = r * 1.6;
+      ctx.save();
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = '#00ffff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, shieldR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
     // Name tag
     ctx.fillStyle = player.color;
     ctx.font = `${Math.round(11 * cam.scale)}px Courier New`;
@@ -215,5 +229,70 @@ class Renderer {
     ctx.fillStyle = '#888';
     ctx.font = '16px Courier New';
     ctx.fillText('Refresh to play again', cx, cy + 100);
+  }
+
+  drawUpgradeMenu(player, allPlayers) {
+    const ctx = this.ctx;
+    const cx = this.canvas.width / 2;
+    const cy = this.canvas.height / 2;
+    const playerCount = allPlayers ? allPlayers.length : 0;
+    const boxW = 400;
+    const boxH = 240 + (allPlayers ? playerCount * 24 : 0);
+    const boxX = cx - boxW / 2;
+    const boxY = cy - boxH / 2;
+
+    // Dim overlay
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+    // Background
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.strokeStyle = '#00ffff';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+    // Title
+    ctx.font = '18px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#00ffff';
+    ctx.fillText('UPGRADES  (' + player.upgradePoints + ' pts)', cx, boxY + 30);
+
+    const items = [
+      { key: '1', name: 'Move Speed', cost: 1, detail: 'Lv ' + player.upgrades.moveSpeed + '/5', canBuy: player.upgradePoints >= 1 && player.upgrades.moveSpeed < 5 },
+      { key: '2', name: 'Attack Speed', cost: 1, detail: 'Lv ' + player.upgrades.attackSpeed + '/5', canBuy: player.upgradePoints >= 1 && player.upgrades.attackSpeed < 5 },
+      { key: '3', name: 'Shield', cost: 1, detail: player.upgrades.shield ? 'ACTIVE' : 'OFF', canBuy: player.upgradePoints >= 1 && !player.upgrades.shield },
+      { key: '4', name: 'Dual Cannon', cost: 4, detail: player.upgrades.dualCannon ? 'OWNED' : 'OFF', canBuy: player.upgradePoints >= 4 && !player.upgrades.dualCannon },
+    ];
+
+    ctx.font = '14px Courier New';
+    ctx.textAlign = 'left';
+    items.forEach((item, i) => {
+      const y = boxY + 60 + i * 30;
+      ctx.fillStyle = item.canBuy ? '#e0e0ff' : '#555555';
+      ctx.fillText('[' + item.key + '] ' + item.name + ' (' + item.cost + 'pt) - ' + item.detail, boxX + 30, y);
+    });
+
+    // Player ready statuses
+    if (allPlayers) {
+      let readyY = boxY + 60 + items.length * 30 + 20;
+      ctx.font = '14px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#888';
+      ctx.fillText('— PLAYERS —', cx, readyY);
+      readyY += 22;
+      allPlayers.forEach((p) => {
+        const tag = p.ready ? ' ✔' : '';
+        ctx.fillStyle = p.ready ? p.color : '#555';
+        ctx.fillText(p.name + tag, cx, readyY);
+        readyY += 24;
+      });
+    }
+
+    // Prompt
+    ctx.font = '16px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#888';
+    ctx.fillText('Press SPACE or click READY when done', cx, boxY + boxH - 16);
   }
 }

@@ -32,16 +32,38 @@ class InputManager {
     };
 
     this._upgradePurchases = [];
+    this._typingMode = false;
+    this._typedChars = [];
 
     window.addEventListener('keydown', (e) => this._onKey(e, true));
     window.addEventListener('keyup', (e) => this._onKey(e, false));
   }
 
   _onKey(e, down) {
+    if (this._typingMode && down) {
+      // Capture letter keys for typing mode
+      if (e.code.startsWith('Key') && e.code.length === 4) {
+        e.preventDefault();
+        this._typedChars.push(e.key.toLowerCase());
+        return;
+      }
+      // Block space from triggering shoot
+      if (e.code === 'Space') {
+        e.preventDefault();
+        return;
+      }
+    }
+    if (this._typingMode && e.code === 'Space') {
+      e.preventDefault();
+      return;
+    }
+
     const action = this._keyMap[e.code];
     if (action) {
       e.preventDefault();
-      this.keys[action] = down;
+      if (!this._typingMode) {
+        this.keys[action] = down;
+      }
       return;
     }
 
@@ -51,6 +73,16 @@ class InputManager {
         this._upgradePurchases.push(upgrade);
       }
     }
+  }
+
+  setTypingMode(enabled) {
+    this._typingMode = enabled;
+  }
+
+  getTypedChars() {
+    const chars = this._typedChars;
+    this._typedChars = [];
+    return chars;
   }
 
   getState() {

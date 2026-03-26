@@ -256,6 +256,194 @@ class Renderer {
     ctx.fillText(base.hp + '/' + base.maxHp, pos.x, barY - 18 * cam.scale);
   }
 
+  getFixedCamera() {
+    const scaleX = this.canvas.width / 2000;
+    const scaleY = this.canvas.height / 1500;
+    const scale = Math.min(scaleX, scaleY);
+    return { x: 1000, y: 750, scale };
+  }
+
+  drawTypingBase(tdBase, cam) {
+    const ctx = this.ctx;
+    const topLeft = this.worldToScreen(tdBase.x, tdBase.y, cam);
+    const w = tdBase.width * cam.scale;
+    const h = tdBase.height * cam.scale;
+
+    const lowHp = tdBase.hp < tdBase.maxHp * 0.3;
+
+    // Platform bar
+    ctx.fillStyle = '#1a3a5a';
+    ctx.fillRect(topLeft.x, topLeft.y, w, h);
+
+    if (lowHp) {
+      const pulse = 0.5 + Math.sin(Date.now() * 0.008) * 0.5;
+      ctx.strokeStyle = `rgba(255, 68, 68, ${pulse})`;
+    } else {
+      ctx.strokeStyle = '#4488ff';
+    }
+    ctx.lineWidth = 2;
+    ctx.strokeRect(topLeft.x, topLeft.y, w, h);
+
+    // HP bar above
+    const barWidth = w * 0.6;
+    const barHeight = 10 * cam.scale;
+    const barX = topLeft.x + (w - barWidth) / 2;
+    const barY = topLeft.y - 20 * cam.scale;
+    const hpFraction = tdBase.hp / tdBase.maxHp;
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.fillRect(barX, barY, barWidth, barHeight);
+
+    const red = Math.min(255, Math.floor(510 * (1 - hpFraction)));
+    const green = Math.min(255, Math.floor(510 * hpFraction));
+    ctx.fillStyle = `rgb(${red}, ${green}, 0)`;
+    ctx.fillRect(barX, barY, barWidth * hpFraction, barHeight);
+
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(barX, barY, barWidth, barHeight);
+
+    // Label
+    ctx.fillStyle = '#4488ff';
+    ctx.font = `${Math.round(12 * cam.scale)}px Courier New`;
+    ctx.textAlign = 'center';
+    ctx.fillText('BASE HP: ' + tdBase.hp + '/' + tdBase.maxHp, topLeft.x + w / 2, barY - 6 * cam.scale);
+  }
+
+  drawCannon(player, cam) {
+    const ctx = this.ctx;
+    const pos = this.worldToScreen(player.x, player.y, cam);
+    const r = 18 * cam.scale;
+
+    // Semi-circle base
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, r, Math.PI, 0);
+    ctx.closePath();
+    ctx.fillStyle = player.color;
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Barrel pointing up
+    const barrelW = r * 0.4;
+    const barrelH = r * 1.4;
+    ctx.fillStyle = player.color;
+    ctx.fillRect(pos.x - barrelW / 2, pos.y - barrelH, barrelW, barrelH);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(pos.x - barrelW / 2, pos.y - barrelH, barrelW, barrelH);
+
+    // Name tag
+    ctx.fillStyle = player.color;
+    ctx.font = `${Math.round(11 * cam.scale)}px Courier New`;
+    ctx.textAlign = 'center';
+    ctx.fillText(player.name, pos.x, pos.y + r + 14 * cam.scale);
+  }
+
+  drawTypingHUD(state, playerId) {
+    const ctx = this.ctx;
+    const padding = 20;
+
+    // Top bar
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(0, 0, this.canvas.width, 50);
+
+    ctx.font = '18px Courier New';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#00ffff';
+    ctx.fillText('SCORE: ' + state.score, padding, 33);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#66cc66';
+    ctx.font = '12px Courier New';
+    ctx.fillText('TYPING DEFENSE', this.canvas.width / 2, 15);
+
+    if (state.tdBase) {
+      ctx.fillStyle = '#4488ff';
+      ctx.font = '14px Courier New';
+      ctx.fillText('BASE: ' + state.tdBase.hp + '/' + state.tdBase.maxHp, this.canvas.width / 2, 33);
+    }
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#ffff00';
+    ctx.font = '18px Courier New';
+    ctx.fillText('WAVE: ' + state.wave, this.canvas.width - padding, 33);
+
+    // Per-player words below cannons
+    const cam = this.getFixedCamera();
+    for (const p of state.players) {
+      if (!p.currentWord) continue;
+      const pos = this.worldToScreen(p.x, p.y, cam);
+      const wordY = pos.y + 36 * cam.scale;
+      const fontSize = Math.round(14 * cam.scale);
+      ctx.font = `${fontSize}px Courier New`;
+      ctx.textAlign = 'center';
+
+      const word = p.currentWord;
+      const ci = p.charIndex;
+      const charWidth = ctx.measureText('M').width;
+      const totalWidth = word.length * charWidth;
+      let startX = pos.x - totalWidth / 2 + charWidth / 2;
+
+      for (let i = 0; i < word.length; i++) {
+        if (i < ci) {
+          ctx.fillStyle = '#44ff44';
+        } else if (i === ci && p.id === playerId) {
+          ctx.fillStyle = '#ffffff';
+        } else {
+          ctx.fillStyle = '#666666';
+        }
+        ctx.fillText(word[i], startX + i * charWidth, wordY);
+      }
+    }
+
+    // Large local player word at bottom
+    const localPlayer = state.players.find(p => p.id === playerId);
+    if (localPlayer && localPlayer.currentWord) {
+      const word = localPlayer.currentWord;
+      const ci = localPlayer.charIndex;
+      const fontSize = 36;
+      const bgH = 60;
+      const bgY = this.canvas.height - bgH;
+
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(0, bgY, this.canvas.width, bgH);
+
+      ctx.font = `${fontSize}px Courier New`;
+      ctx.textAlign = 'center';
+      const charWidth = ctx.measureText('M').width;
+      const totalWidth = word.length * charWidth;
+      let startX = this.canvas.width / 2 - totalWidth / 2 + charWidth / 2;
+      const textY = bgY + 42;
+
+      for (let i = 0; i < word.length; i++) {
+        if (i < ci) {
+          ctx.fillStyle = '#44ff44';
+        } else if (i === ci) {
+          ctx.fillStyle = '#ffffff';
+        } else {
+          ctx.fillStyle = '#666666';
+        }
+        ctx.fillText(word[i], startX + i * charWidth, textY);
+      }
+
+      // Words completed counter
+      ctx.fillStyle = '#888';
+      ctx.font = '14px Courier New';
+      ctx.textAlign = 'right';
+      ctx.fillText('WORDS: ' + (localPlayer.wordsCompleted || 0), this.canvas.width - padding, bgY + 20);
+    }
+
+    // Wave complete message during pause
+    if (state.tdWavePausing) {
+      ctx.fillStyle = '#44ff44';
+      ctx.font = '32px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('WAVE COMPLETE', this.canvas.width / 2, this.canvas.height / 2);
+    }
+  }
+
   drawHUD(state) {
     const ctx = this.ctx;
     const padding = 20;
@@ -313,8 +501,8 @@ class Renderer {
     ctx.fillText('ROOM: ' + roomCode, cx, cy - 100);
 
     if (mode) {
-      const modeColors = { 'planet-killer': '#cc4422', 'swarm-defense': '#4488ff', 'belt-chaos': '#ffaa00' };
-      const modeLabels = { 'planet-killer': 'MODE: PLANET KILLER', 'swarm-defense': 'MODE: SWARM DEFENSE', 'belt-chaos': 'MODE: BELT CHAOS' };
+      const modeColors = { 'planet-killer': '#cc4422', 'swarm-defense': '#4488ff', 'belt-chaos': '#ffaa00', 'typing-defense': '#66cc66' };
+      const modeLabels = { 'planet-killer': 'MODE: PLANET KILLER', 'swarm-defense': 'MODE: SWARM DEFENSE', 'belt-chaos': 'MODE: BELT CHAOS', 'typing-defense': 'MODE: TYPING DEFENSE' };
       ctx.fillStyle = modeColors[mode] || '#ffaa00';
       ctx.font = '16px Courier New';
       ctx.fillText(modeLabels[mode] || 'MODE: ' + mode.toUpperCase(), cx, cy - 72);
@@ -332,7 +520,7 @@ class Renderer {
 
     ctx.fillStyle = '#888';
     ctx.font = '16px Courier New';
-    ctx.fillText('Press SPACE or click READY when you\'re ready', cx, cy + 120);
+    ctx.fillText('Press R or click READY when you\'re ready', cx, cy + 120);
   }
 
   drawGameOver(score, wave) {
@@ -420,6 +608,35 @@ class Renderer {
     ctx.font = '16px Courier New';
     ctx.textAlign = 'center';
     ctx.fillStyle = '#888';
-    ctx.fillText('Press SPACE or click READY when done', cx, boxY + boxH - 16);
+    ctx.fillText('Press R or click READY when done', cx, boxY + boxH - 16);
+  }
+
+  drawTypingWavePause(allPlayers) {
+    const ctx = this.ctx;
+    const cx = this.canvas.width / 2;
+    const cy = this.canvas.height / 2;
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+    ctx.font = '24px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#66cc66';
+    ctx.fillText('WAVE COMPLETE', cx, cy - 60);
+
+    if (allPlayers) {
+      let y = cy - 20;
+      ctx.font = '14px Courier New';
+      allPlayers.forEach((p) => {
+        const tag = p.ready ? ' \u2714' : '';
+        ctx.fillStyle = p.ready ? p.color : '#555';
+        ctx.fillText(p.name + tag, cx, y);
+        y += 24;
+      });
+    }
+
+    ctx.font = '16px Courier New';
+    ctx.fillStyle = '#888';
+    ctx.fillText('Press R or click READY to continue', cx, cy + 60);
   }
 }

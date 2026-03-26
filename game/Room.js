@@ -1,4 +1,5 @@
 const C = require('./constants');
+const WORDS = require('./words');
 
 class Room {
   constructor(code, io, mode = 'belt-chaos') {
@@ -20,6 +21,10 @@ class Room {
     this.base = null;
     this.swarmRemaining = 0;
     this.swarmSpawnTimer = 0;
+    this.tdBase = null;
+    this.tdWavePauseTimer = 0;
+    this.tdAsteroidsSpawned = 0;
+    this.tdAsteroidsTotal = 0;
   }
 
   _id() {
@@ -46,6 +51,12 @@ class Room {
       upgradePoints: 0,
       upgrades: { moveSpeed: 0, attackSpeed: 0, shield: false, dualCannon: false },
     };
+
+    if (this.mode === 'typing-defense') {
+      player.currentWord = this._assignWord();
+      player.charIndex = 0;
+      player.wordsCompleted = 0;
+    }
 
     this.players.set(socket.id, player);
     socket.join(this.code);
@@ -109,6 +120,18 @@ class Room {
       };
     }
 
+    if (this.mode === 'typing-defense') {
+      this.tdBase = {
+        x: (C.MAP_WIDTH - C.TD_BASE_WIDTH) / 2,
+        y: C.TD_BASE_Y,
+        width: C.TD_BASE_WIDTH,
+        height: C.TD_BASE_HEIGHT,
+        hp: C.TD_BASE_HP,
+        maxHp: C.TD_BASE_HP,
+      };
+      this._positionTypingPlayers();
+    }
+
     this.spawnWave();
 
     this.tickInterval = setInterval(() => this.tick(), 1000 / C.TICK_RATE);
@@ -121,7 +144,9 @@ class Room {
     if (this.wave >= 1) {
       // Enter upgrading state between waves
       for (const [, p] of this.players) {
-        p.upgradePoints += C.UPGRADE_POINTS_PER_WAVE;
+        if (this.mode !== 'typing-defense') {
+          p.upgradePoints += C.UPGRADE_POINTS_PER_WAVE;
+        }
         p.ready = false;
       }
       this.state = 'upgrading';
@@ -139,6 +164,19 @@ class Room {
 
   _startWave() {
     this.wave++;
+
+    if (this.mode === 'typing-defense') {
+      const count = C.TD_ASTEROID_COUNT + (this.wave - 1) * C.TD_ASTEROID_INCREMENT;
+      this.tdAsteroidsTotal = count;
+      this.tdAsteroidsSpawned = count;
+      for (let i = 0; i < count; i++) {
+        this.asteroids.push(this._createTypingAsteroid(i, count));
+      }
+      this.tdBase.maxHp = C.TD_BASE_HP + (this.wave - 1) * C.TD_BASE_HP_INCREMENT;
+      this.tdBase.hp = this.tdBase.maxHp;
+      this.tdWavePauseTimer = 0;
+      return;
+    }
 
     if (this.mode === 'planet-killer') {
       this.asteroids.push(this._createPlanetKiller());
@@ -275,6 +313,123 @@ class Room {
     };
   }
 
+  _positionTypingPlayers() {
+    const baseLeft = this.tdBase.x;
+    const playerCount = this.players.size;
+    const spacing = this.tdBase.width / (playerCount + 1);
+    let i = 0;
+    for (const [, p] of this.players) {
+      p.x = baseLeft + spacing * (i + 1);
+      p.y = C.TD_BASE_Y - 30;
+      p.angle = -Math.PI / 2;
+      i++;
+    }
+  }
+
+  _assignWord() {
+    return WORDS[Math.floor(Math.random() * WORDS.length)];
+  }
+
+  handleTypingChar(socketId, char) {
+    if (this.state !== 'playing') return;
+    const player = this.players.get(socketId);
+    if (!player) return;
+
+    const expected = player.currentWord[player.charIndex];
+    if (char.toLowerCase() !== expected) return;
+
+    player.charIndex++;
+    this._fireAtNearest(player);
+
+    if (player.charIndex >= player.currentWord.length) {
+      this.score += C.TD_WORD_COMPLETE_BONUS;
+      player.wordsCompleted++;
+      player.currentWord = this._assignWord();
+      player.charIndex = 0;
+    }
+  }
+
+  _fireAtNearest(player) {
+    let nearest = null;
+    let nearestDist = Infinity;
+    for (const a of this.asteroids) {
+      const dx = a.x - player.x;
+      const dy = a.y - player.y;
+      const dist = dx * dx + dy * dy;
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearest = a;
+      }
+    }
+    if (!nearest) return;
+
+    const px = player.x;
+    const py = player.y - C.SHIP_RADIUS;
+
+    // Predictive aiming — solve for intercept point
+    let dx = nearest.x - px;
+    let dy = nearest.y - py;
+    const avx = nearest.vx;
+    const avy = nearest.vy;
+    const spd = C.TD_BULLET_SPEED;
+
+    const a = avx * avx + avy * avy - spd * spd;
+    const b = 2 * (dx * avx + dy * avy);
+    const c = dx * dx + dy * dy;
+    const disc = b * b - 4 * a * c;
+
+    let ix = nearest.x;
+    let iy = nearest.y;
+
+    if (disc >= 0) {
+      const sqrtDisc = Math.sqrt(disc);
+      const t1 = (-b - sqrtDisc) / (2 * a);
+      const t2 = (-b + sqrtDisc) / (2 * a);
+      const t = t1 > 0 ? t1 : t2 > 0 ? t2 : -1;
+      if (t > 0) {
+        ix = nearest.x + avx * t;
+        iy = nearest.y + avy * t;
+      }
+    }
+
+    const angle = Math.atan2(iy - py, ix - px);
+    this.bullets.push({
+      id: this._id(),
+      x: px,
+      y: py,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      ownerId: player.id,
+      life: C.BULLET_LIFETIME,
+    });
+  }
+
+  _createTypingAsteroid(index, total) {
+    const margin = C.TD_SPAWN_MARGIN;
+    const x = margin + Math.random() * (C.MAP_WIDTH - margin * 2);
+    const y = -C.ASTEROID_RADIUS_MEDIUM - (index / total) * 400;
+    const speed = C.TD_ASTEROID_SPEED_MIN + Math.random() * (C.TD_ASTEROID_SPEED_MAX - C.TD_ASTEROID_SPEED_MIN);
+    const drift = (Math.random() - 0.5) * 0.3;
+
+    const vertices = [];
+    const numVertices = 7 + Math.floor(Math.random() * 4);
+    for (let i = 0; i < numVertices; i++) {
+      vertices.push(0.7 + Math.random() * 0.3);
+    }
+
+    return {
+      id: this._id(),
+      x, y,
+      vx: drift,
+      vy: speed,
+      radius: C.ASTEROID_RADIUS_MEDIUM,
+      size: 'medium',
+      vertices,
+      rotation: Math.random() * Math.PI * 2,
+      rotationSpeed: (Math.random() - 0.5) * 0.03,
+    };
+  }
+
   tick() {
     if (this.state !== 'playing') return;
 
@@ -291,11 +446,23 @@ class Room {
       }
     }
 
+    // Typing defense wave pause timer
+    if (this.mode === 'typing-defense' && this.tdWavePauseTimer > 0) {
+      this.tdWavePauseTimer--;
+      if (this.tdWavePauseTimer <= 0) {
+        this.spawnWave();
+      }
+      return;
+    }
+
     // Update players
     for (const [, p] of this.players) {
       if (!p.alive) continue;
 
       if (p.invincible > 0) p.invincible--;
+
+      if (this.mode === 'typing-defense') continue;
+
       if (p.shootCooldown > 0) p.shootCooldown--;
 
       // Rotation
@@ -391,7 +558,7 @@ class Room {
       a.rotation += a.rotationSpeed;
 
       // Wrap around
-      if (this.mode !== 'swarm-defense') {
+      if (this.mode !== 'swarm-defense' && this.mode !== 'typing-defense') {
         if (a.x < -a.radius * 2) a.x = C.MAP_WIDTH + a.radius;
         if (a.x > C.MAP_WIDTH + a.radius * 2) a.x = -a.radius;
         if (a.y < -a.radius * 2) a.y = C.MAP_HEIGHT + a.radius;
@@ -399,8 +566,8 @@ class Room {
       }
     }
 
-    // Remove out-of-bounds asteroids in swarm-defense
-    if (this.mode === 'swarm-defense') {
+    // Remove out-of-bounds asteroids in swarm-defense / typing-defense
+    if (this.mode === 'swarm-defense' || this.mode === 'typing-defense') {
       for (let i = this.asteroids.length - 1; i >= 0; i--) {
         const a = this.asteroids[i];
         if (a.x < -a.radius * 2 || a.x > C.MAP_WIDTH + a.radius * 2 ||
@@ -439,6 +606,9 @@ class Room {
         } else if (this.mode === 'swarm-defense') {
           this.score += C.SD_SCORE_PER_ASTEROID;
           this.asteroids.splice(ai, 1);
+        } else if (this.mode === 'typing-defense') {
+          this.score += C.TD_SCORE_PER_ASTEROID;
+          this.asteroids.splice(ai, 1);
         } else {
           // Score
           if (a.size === 'large') this.score += C.SCORE_LARGE;
@@ -460,8 +630,10 @@ class Room {
     }
     this.asteroids.push(...newAsteroids);
 
-    // Asteroid-player collisions
-    for (const [, p] of this.players) {
+    // Asteroid-player collisions (skip for typing-defense)
+    if (this.mode === 'typing-defense') {
+      // Skip — players are stationary turrets on the base
+    } else for (const [, p] of this.players) {
       if (!p.alive || p.invincible > 0) continue;
       for (let ai = this.asteroids.length - 1; ai >= 0; ai--) {
         const a = this.asteroids[ai];
@@ -522,12 +694,38 @@ class Room {
       this.score += C.SD_WAVE_COMPLETE_BONUS;
       this.spawnWave();
     }
+
+    // Typing defense base collision
+    if (this.mode === 'typing-defense' && this.tdBase) {
+      for (let ai = this.asteroids.length - 1; ai >= 0; ai--) {
+        const a = this.asteroids[ai];
+        if (a.y + a.radius >= this.tdBase.y) {
+          this.tdBase.hp--;
+          this.asteroids.splice(ai, 1);
+          if (this.tdBase.hp <= 0) {
+            this.state = 'gameover';
+            this.io.to(this.code).emit('game-over', { score: this.score, wave: this.wave });
+            clearInterval(this.tickInterval);
+            clearInterval(this.broadcastInterval);
+            clearTimeout(this.waveTimeout);
+            this.cleanupTimeout = setTimeout(() => this.destroy(), 30000);
+            return;
+          }
+        }
+      }
+
+      // Wave completion
+      if (this.tdAsteroidsSpawned > 0 && this.asteroids.length === 0 && this.tdWavePauseTimer <= 0) {
+        this.score += C.TD_WAVE_COMPLETE_BONUS;
+        this.tdWavePauseTimer = C.TD_WAVE_PAUSE_TICKS;
+      }
+    }
   }
 
   getSnapshot() {
     const players = [];
     for (const [, p] of this.players) {
-      players.push({
+      const playerData = {
         id: p.id,
         name: p.name,
         color: p.color,
@@ -539,7 +737,13 @@ class Room {
         ready: p.ready,
         upgradePoints: p.upgradePoints,
         upgrades: { ...p.upgrades },
-      });
+      };
+      if (this.mode === 'typing-defense') {
+        playerData.currentWord = p.currentWord;
+        playerData.charIndex = p.charIndex;
+        playerData.wordsCompleted = p.wordsCompleted;
+      }
+      players.push(playerData);
     }
 
     return {
@@ -566,6 +770,8 @@ class Room {
       wave: this.wave,
       base: this.base,
       swarmRemaining: this.swarmRemaining,
+      tdBase: this.tdBase,
+      tdWavePausing: this.tdWavePauseTimer > 0,
     };
   }
 

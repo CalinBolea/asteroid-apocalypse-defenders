@@ -58,7 +58,13 @@
     gameState = state;
     if (state.state === 'playing') {
       startBtn.classList.add('hidden');
+      if (state.mode === 'typing-defense') {
+        input.setTypingMode(true);
+      }
     } else if (state.state === 'upgrading') {
+      if (state.mode === 'typing-defense') {
+        input.setTypingMode(false);
+      }
       startBtn.textContent = 'READY';
       startBtn.disabled = false;
       startBtn.classList.remove('hidden');
@@ -95,7 +101,7 @@
 
   // Also allow space to ready when in waiting state
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'Space' && !startBtn.classList.contains('hidden') && !startBtn.disabled) {
+    if (e.code === 'KeyR' && !startBtn.classList.contains('hidden') && !startBtn.disabled) {
       socket.emit('player-ready');
       startBtn.disabled = true;
       startBtn.textContent = 'WAITING...';
@@ -107,11 +113,18 @@
   setInterval(() => {
     if (!gameState) return;
     if (gameState.state === 'playing') {
-      const current = input.getState();
-      const str = JSON.stringify(current);
-      if (str !== lastInput) {
-        socket.emit('player-input', current);
-        lastInput = str;
+      if (gameState.mode === 'typing-defense') {
+        const chars = input.getTypedChars();
+        for (const ch of chars) {
+          socket.emit('type-char', ch);
+        }
+      } else {
+        const current = input.getState();
+        const str = JSON.stringify(current);
+        if (str !== lastInput) {
+          socket.emit('player-input', current);
+          lastInput = str;
+        }
       }
     }
     if (gameState.state === 'upgrading') {
@@ -126,34 +139,53 @@
   function render() {
     renderer.clear();
 
+    const isTyping = gameState && gameState.mode === 'typing-defense';
+
     if (gameOver) {
       // Show final game state if available
       if (gameState) {
-        const cam = renderer.getCamera(playerId, gameState.players);
+        const cam = isTyping ? renderer.getFixedCamera() : renderer.getCamera(playerId, gameState.players);
         renderer.drawGrid(cam);
         if (gameState.base) renderer.drawBase(gameState.base, cam);
+        if (gameState.tdBase) renderer.drawTypingBase(gameState.tdBase, cam);
         gameState.asteroids.forEach(a => renderer.drawAsteroid(a, cam));
-        gameState.players.forEach(p => renderer.drawShip(p, cam));
+        if (isTyping) {
+          gameState.players.forEach(p => renderer.drawCannon(p, cam));
+        } else {
+          gameState.players.forEach(p => renderer.drawShip(p, cam));
+        }
       }
       renderer.drawGameOver(finalScore, finalWave);
     } else if (gameState && gameState.state === 'playing') {
-      const cam = renderer.getCamera(playerId, gameState.players);
+      const cam = isTyping ? renderer.getFixedCamera() : renderer.getCamera(playerId, gameState.players);
       renderer.drawGrid(cam);
       if (gameState.base) renderer.drawBase(gameState.base, cam);
+      if (gameState.tdBase) renderer.drawTypingBase(gameState.tdBase, cam);
       gameState.bullets.forEach(b => renderer.drawBullet(b, cam));
       gameState.asteroids.forEach(a => renderer.drawAsteroid(a, cam));
-      gameState.players.forEach(p => renderer.drawShip(p, cam));
-      renderer.drawHUD(gameState);
+      if (isTyping) {
+        gameState.players.forEach(p => renderer.drawCannon(p, cam));
+        renderer.drawTypingHUD(gameState, playerId);
+      } else {
+        gameState.players.forEach(p => renderer.drawShip(p, cam));
+        renderer.drawHUD(gameState);
+      }
     } else if (gameState && gameState.state === 'upgrading') {
-      const cam = renderer.getCamera(playerId, gameState.players);
+      const cam = isTyping ? renderer.getFixedCamera() : renderer.getCamera(playerId, gameState.players);
       renderer.drawGrid(cam);
       if (gameState.base) renderer.drawBase(gameState.base, cam);
+      if (gameState.tdBase) renderer.drawTypingBase(gameState.tdBase, cam);
       gameState.asteroids.forEach(a => renderer.drawAsteroid(a, cam));
-      gameState.players.forEach(p => renderer.drawShip(p, cam));
-      renderer.drawHUD(gameState);
-      const localPlayer = gameState.players.find(p => p.id === playerId);
-      if (localPlayer) {
-        renderer.drawUpgradeMenu(localPlayer, gameState.players);
+      if (isTyping) {
+        gameState.players.forEach(p => renderer.drawCannon(p, cam));
+        renderer.drawTypingWavePause(gameState.players);
+      } else {
+        gameState.players.forEach(p => renderer.drawShip(p, cam));
+        renderer.drawHUD(gameState);
+        const localPlayer = gameState.players.find(p => p.id === playerId);
+        if (localPlayer) {
+          renderer.drawUpgradeMenu(localPlayer, gameState.players);
+        }
       }
     } else {
       // Waiting state

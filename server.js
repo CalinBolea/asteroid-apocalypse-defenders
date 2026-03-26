@@ -36,7 +36,7 @@ function generateCode() {
 // API routes
 app.post(BASE_PATH + '/api/rooms', (req, res) => {
   const code = generateCode();
-  const validModes = ['belt-chaos', 'planet-killer', 'swarm-defense'];
+  const validModes = ['belt-chaos', 'planet-killer', 'swarm-defense', 'typing-defense'];
   const mode = validModes.includes(req.body?.mode) ? req.body.mode : 'belt-chaos';
   const room = new Room(code, io, mode);
   rooms.set(code, room);
@@ -143,6 +143,11 @@ io.on('connection', (socket) => {
     }
 
     player.upgradePoints -= cost;
+  });
+
+  socket.on('type-char', (char) => {
+    if (currentRoom && typeof char === 'string' && char.length === 1)
+      currentRoom.handleTypingChar(socket.id, char);
   });
 
   socket.on('disconnect', () => {

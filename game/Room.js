@@ -231,7 +231,7 @@ class Room {
             life: C.BULLET_LIFETIME,
           });
         }
-        p.shootCooldown = Math.max(C.MIN_SHOOT_COOLDOWN, 8 - p.upgrades.attackSpeed * C.ATTACK_SPEED_BONUS);
+        p.shootCooldown = Math.max(C.MIN_SHOOT_COOLDOWN, 16 - p.upgrades.attackSpeed * C.ATTACK_SPEED_BONUS);
       }
     }
 

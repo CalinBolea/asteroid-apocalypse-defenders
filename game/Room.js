@@ -25,6 +25,7 @@ class Room {
     this.tdWavePauseTimer = 0;
     this.tdAsteroidsSpawned = 0;
     this.tdAsteroidsTotal = 0;
+    this.ownerId = null;
   }
 
   _id() {
@@ -58,6 +59,7 @@ class Room {
       player.wordsCompleted = 0;
     }
 
+    if (!this.ownerId) this.ownerId = socket.id;
     this.players.set(socket.id, player);
     socket.join(this.code);
     return true;
@@ -68,6 +70,13 @@ class Room {
     if (this.players.size === 0) {
       this.destroy();
       return true; // room should be removed
+    }
+    if (socketId === this.ownerId) {
+      const next = this.players.keys().next().value;
+      this.ownerId = next || null;
+      if (this.ownerId) {
+        this.io.to(this.code).emit('owner-changed', { ownerId: this.ownerId });
+      }
     }
     return false;
   }
@@ -654,7 +663,7 @@ class Room {
 
           if (this.lives <= 0) {
             this.state = 'gameover';
-            this.io.to(this.code).emit('game-over', { score: this.score, wave: this.wave });
+            this.io.to(this.code).emit('game-over', { score: this.score, wave: this.wave, ownerId: this.ownerId });
             clearInterval(this.tickInterval);
             clearInterval(this.broadcastInterval);
             clearTimeout(this.waveTimeout);
@@ -678,7 +687,7 @@ class Room {
           this.asteroids.splice(ai, 1);
           if (this.base.hp <= 0) {
             this.state = 'gameover';
-            this.io.to(this.code).emit('game-over', { score: this.score, wave: this.wave });
+            this.io.to(this.code).emit('game-over', { score: this.score, wave: this.wave, ownerId: this.ownerId });
             clearInterval(this.tickInterval);
             clearInterval(this.broadcastInterval);
             clearTimeout(this.waveTimeout);
@@ -704,7 +713,7 @@ class Room {
           this.asteroids.splice(ai, 1);
           if (this.tdBase.hp <= 0) {
             this.state = 'gameover';
-            this.io.to(this.code).emit('game-over', { score: this.score, wave: this.wave });
+            this.io.to(this.code).emit('game-over', { score: this.score, wave: this.wave, ownerId: this.ownerId });
             clearInterval(this.tickInterval);
             clearInterval(this.broadcastInterval);
             clearTimeout(this.waveTimeout);
@@ -720,6 +729,54 @@ class Room {
         this.tdWavePauseTimer = C.TD_WAVE_PAUSE_TICKS;
       }
     }
+  }
+
+  restart() {
+    if (this.state !== 'gameover') return;
+
+    clearTimeout(this.cleanupTimeout);
+    clearInterval(this.tickInterval);
+    clearInterval(this.broadcastInterval);
+    clearTimeout(this.waveTimeout);
+
+    this.state = 'waiting';
+    this.score = 0;
+    this.lives = C.STARTING_LIVES;
+    this.wave = 0;
+    this.asteroids = [];
+    this.bullets = [];
+    this.nextEntityId = 1;
+    this.base = null;
+    this.swarmRemaining = 0;
+    this.swarmSpawnTimer = 0;
+    this.tdBase = null;
+    this.tdWavePauseTimer = 0;
+    this.tdAsteroidsSpawned = 0;
+    this.tdAsteroidsTotal = 0;
+
+    for (const [, p] of this.players) {
+      p.x = C.MAP_WIDTH / 2 + (Math.random() - 0.5) * 200;
+      p.y = C.MAP_HEIGHT / 2 + (Math.random() - 0.5) * 200;
+      p.angle = -Math.PI / 2;
+      p.input = { up: false, down: false, left: false, right: false, strafeLeft: false, strafeRight: false, strafeUp: false, strafeDown: false, shoot: false };
+      p.shootCooldown = 0;
+      p.invincible = C.RESPAWN_INVINCIBILITY;
+      p.alive = true;
+      p.ready = false;
+      p.upgradePoints = 0;
+      p.upgrades = { moveSpeed: 0, attackSpeed: 0, shield: false, dualCannon: false };
+      if (this.mode === 'typing-defense') {
+        p.currentWord = this._assignWord();
+        p.charIndex = 0;
+        p.wordsCompleted = 0;
+      }
+    }
+
+    const players = [];
+    for (const [, p] of this.players) {
+      players.push({ id: p.id, name: p.name, color: p.color, ready: p.ready });
+    }
+    this.io.to(this.code).emit('game-restarted', { ownerId: this.ownerId, mode: this.mode, players });
   }
 
   getSnapshot() {

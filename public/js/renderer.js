@@ -523,7 +523,7 @@ class Renderer {
     ctx.fillText('Press R or click READY when you\'re ready', cx, cy + 120);
   }
 
-  drawGameOver(score, wave) {
+  drawGameOver(score, wave, isOwner) {
     const ctx = this.ctx;
     const cx = this.canvas.width / 2;
     const cy = this.canvas.height / 2;
@@ -541,9 +541,19 @@ class Renderer {
     ctx.fillText('Score: ' + score, cx, cy + 20);
     ctx.fillText('Wave: ' + wave, cx, cy + 55);
 
+    if (isOwner) {
+      ctx.fillStyle = '#00ffff';
+      ctx.font = '16px Courier New';
+      ctx.fillText('Press R to Restart', cx, cy + 100);
+    } else {
+      ctx.fillStyle = '#888';
+      ctx.font = '16px Courier New';
+      ctx.fillText('Waiting for host to restart...', cx, cy + 100);
+    }
+
     ctx.fillStyle = '#888';
-    ctx.font = '16px Courier New';
-    ctx.fillText('Refresh to play again', cx, cy + 100);
+    ctx.font = '14px Courier New';
+    ctx.fillText('Press ESC for Main Menu', cx, cy + 130);
   }
 
   drawUpgradeMenu(player, allPlayers) {

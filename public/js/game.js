@@ -24,6 +24,7 @@
   let gameOver = false;
   let finalScore = 0;
   let finalWave = 0;
+  let isOwner = false;
 
   // Resize canvas
   function resize() {
@@ -41,6 +42,7 @@
     playerId = data.playerId;
     roomPlayers = data.players;
     if (data.mode) gameMode = data.mode;
+    isOwner = (data.playerId === data.ownerId);
     if (data.state === 'waiting') {
       startBtn.classList.remove('hidden');
     }
@@ -81,6 +83,25 @@
     gameOver = true;
     finalScore = data.score;
     finalWave = data.wave;
+    isOwner = (playerId === data.ownerId);
+  });
+
+  socket.on('owner-changed', (data) => {
+    isOwner = (playerId === data.ownerId);
+  });
+
+  socket.on('game-restarted', (data) => {
+    gameOver = false;
+    gameState = null;
+    finalScore = 0;
+    finalWave = 0;
+    roomPlayers = data.players;
+    isOwner = (playerId === data.ownerId);
+    if (data.mode) gameMode = data.mode;
+    input.setTypingMode(false);
+    startBtn.textContent = 'READY';
+    startBtn.disabled = false;
+    startBtn.classList.remove('hidden');
   });
 
   socket.on('error', (data) => {
@@ -99,8 +120,17 @@
     startBtn.textContent = 'WAITING...';
   });
 
-  // Also allow space to ready when in waiting state
+  // Keyboard shortcuts
   window.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyR' && gameOver && isOwner) {
+      socket.emit('restart-game');
+      return;
+    }
+    if (e.code === 'Escape' && gameOver) {
+      socket.emit('leave-room');
+      window.location.href = './';
+      return;
+    }
     if (e.code === 'KeyR' && !startBtn.classList.contains('hidden') && !startBtn.disabled) {
       socket.emit('player-ready');
       startBtn.disabled = true;
@@ -155,7 +185,7 @@
           gameState.players.forEach(p => renderer.drawShip(p, cam));
         }
       }
-      renderer.drawGameOver(finalScore, finalWave);
+      renderer.drawGameOver(finalScore, finalWave, isOwner);
     } else if (gameState && gameState.state === 'playing') {
       const cam = isTyping ? renderer.getFixedCamera() : renderer.getCamera(playerId, gameState.players);
       renderer.drawGrid(cam);

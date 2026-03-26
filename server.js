@@ -80,6 +80,7 @@ io.on('connection', (socket) => {
       playerId: socket.id,
       state: room.state,
       mode: room.mode,
+      ownerId: room.ownerId,
       players: Array.from(room.players.values()).map(p => ({ id: p.id, name: p.name, color: p.color, ready: p.ready })),
     });
 
@@ -148,6 +149,25 @@ io.on('connection', (socket) => {
   socket.on('type-char', (char) => {
     if (currentRoom && typeof char === 'string' && char.length === 1)
       currentRoom.handleTypingChar(socket.id, char);
+  });
+
+  socket.on('restart-game', () => {
+    if (currentRoom && currentRoom.state === 'gameover' && socket.id === currentRoom.ownerId) {
+      currentRoom.restart();
+    }
+  });
+
+  socket.on('leave-room', () => {
+    if (currentRoom) {
+      const shouldRemove = currentRoom.removePlayer(socket.id);
+      if (shouldRemove) {
+        rooms.delete(currentRoom.code);
+      } else {
+        socket.to(currentRoom.code).emit('player-left', { id: socket.id });
+      }
+      socket.leave(currentRoom.code);
+      currentRoom = null;
+    }
   });
 
   socket.on('disconnect', () => {

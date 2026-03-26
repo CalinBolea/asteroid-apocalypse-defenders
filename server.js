@@ -36,9 +36,10 @@ function generateCode() {
 // API routes
 app.post(BASE_PATH + '/api/rooms', (req, res) => {
   const code = generateCode();
-  const room = new Room(code, io);
+  const mode = req.body && req.body.mode === 'planet-killer' ? 'planet-killer' : 'belt-chaos';
+  const room = new Room(code, io, mode);
   rooms.set(code, room);
-  res.json({ code });
+  res.json({ code, mode });
 });
 
 app.get(BASE_PATH + '/api/rooms/:code', (req, res) => {
@@ -50,7 +51,7 @@ app.get(BASE_PATH + '/api/rooms/:code', (req, res) => {
   if (room.players.size >= C.MAX_PLAYERS) {
     return res.status(400).json({ error: 'Room is full' });
   }
-  res.json({ code, players: room.players.size, state: room.state });
+  res.json({ code, players: room.players.size, state: room.state, mode: room.mode });
 });
 
 // Socket.io
@@ -77,6 +78,7 @@ io.on('connection', (socket) => {
       code: room.code,
       playerId: socket.id,
       state: room.state,
+      mode: room.mode,
       players: Array.from(room.players.values()).map(p => ({ id: p.id, name: p.name, color: p.color, ready: p.ready })),
     });
 

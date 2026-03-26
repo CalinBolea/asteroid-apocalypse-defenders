@@ -138,13 +138,47 @@ class Renderer {
     }
     ctx.closePath();
 
-    ctx.fillStyle = '#4a3a2a';
-    ctx.fill();
-    ctx.strokeStyle = '#8a7a6a';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
+    if (asteroid.size === 'planet-killer') {
+      ctx.fillStyle = '#5a1a1a';
+      ctx.fill();
+      ctx.strokeStyle = '#cc4422';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = '#4a3a2a';
+      ctx.fill();
+      ctx.strokeStyle = '#8a7a6a';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
 
     ctx.restore();
+
+    // HP bar for planet killer
+    if (asteroid.size === 'planet-killer' && asteroid.hp !== undefined) {
+      const barWidth = r * 2;
+      const barHeight = 8 * cam.scale;
+      const barX = pos.x - barWidth / 2;
+      const barY = pos.y - r - 16 * cam.scale;
+      const hpFraction = asteroid.hp / asteroid.maxHp;
+
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+      ctx.fillRect(barX, barY, barWidth, barHeight);
+
+      const red = Math.min(255, Math.floor(510 * (1 - hpFraction)));
+      const green = Math.min(255, Math.floor(510 * hpFraction));
+      ctx.fillStyle = `rgb(${red}, ${green}, 0)`;
+      ctx.fillRect(barX, barY, barWidth * hpFraction, barHeight);
+
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(barX, barY, barWidth, barHeight);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `${Math.round(10 * cam.scale)}px Courier New`;
+      ctx.textAlign = 'center';
+      ctx.fillText(asteroid.hp + '/' + asteroid.maxHp, pos.x, barY - 4 * cam.scale);
+    }
   }
 
   drawBullet(bullet, cam) {
@@ -181,9 +215,16 @@ class Renderer {
     ctx.textAlign = 'right';
     ctx.fillStyle = '#ffff00';
     ctx.fillText('WAVE: ' + state.wave, this.canvas.width - padding, 33);
+
+    if (state.mode === 'planet-killer') {
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#cc4422';
+      ctx.font = '12px Courier New';
+      ctx.fillText('PLANET KILLER', this.canvas.width / 2, 15);
+    }
   }
 
-  drawWaiting(players, roomCode) {
+  drawWaiting(players, roomCode, mode) {
     const ctx = this.ctx;
     const cx = this.canvas.width / 2;
     const cy = this.canvas.height / 2;
@@ -192,6 +233,12 @@ class Renderer {
     ctx.font = '36px Courier New';
     ctx.textAlign = 'center';
     ctx.fillText('ROOM: ' + roomCode, cx, cy - 100);
+
+    if (mode) {
+      ctx.fillStyle = mode === 'planet-killer' ? '#cc4422' : '#ffaa00';
+      ctx.font = '16px Courier New';
+      ctx.fillText(mode === 'planet-killer' ? 'MODE: PLANET KILLER' : 'MODE: BELT CHAOS', cx, cy - 72);
+    }
 
     ctx.fillStyle = '#e0e0ff';
     ctx.font = '18px Courier New';

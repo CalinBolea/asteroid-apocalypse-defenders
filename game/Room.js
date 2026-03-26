@@ -1,9 +1,10 @@
 const C = require('./constants');
 
 class Room {
-  constructor(code, io) {
+  constructor(code, io, mode = 'belt-chaos') {
     this.code = code;
     this.io = io;
+    this.mode = mode;
     this.players = new Map();
     this.asteroids = [];
     this.bullets = [];
@@ -125,15 +126,60 @@ class Room {
 
   _startWave() {
     this.wave++;
-    const count = C.WAVE_BASE_COUNT + (this.wave - 1) * C.WAVE_INCREMENT;
 
-    for (let i = 0; i < count; i++) {
-      this.asteroids.push(this._createAsteroid('large'));
+    if (this.mode === 'planet-killer') {
+      this.asteroids.push(this._createPlanetKiller());
+    } else {
+      const count = C.WAVE_BASE_COUNT + (this.wave - 1) * C.WAVE_INCREMENT;
+      for (let i = 0; i < count; i++) {
+        this.asteroids.push(this._createAsteroid('large'));
+      }
+      this.waveTimeout = setTimeout(() => {
+        if (this.state === 'playing') this.spawnWave();
+      }, C.WAVE_INTERVAL);
+    }
+  }
+
+  _createPlanetKiller() {
+    const maxRadius = Math.min(
+      C.PK_BASE_RADIUS + (this.wave - 1) * C.PK_RADIUS_INCREMENT,
+      C.PK_MAX_RADIUS
+    );
+    const maxHp = C.PK_BASE_HP + (this.wave - 1) * C.PK_HP_INCREMENT;
+
+    let x, y;
+    const edge = Math.floor(Math.random() * 4);
+    switch (edge) {
+      case 0: x = Math.random() * C.MAP_WIDTH; y = -maxRadius; break;
+      case 1: x = C.MAP_WIDTH + maxRadius; y = Math.random() * C.MAP_HEIGHT; break;
+      case 2: x = Math.random() * C.MAP_WIDTH; y = C.MAP_HEIGHT + maxRadius; break;
+      case 3: x = -maxRadius; y = Math.random() * C.MAP_HEIGHT; break;
     }
 
-    this.waveTimeout = setTimeout(() => {
-      if (this.state === 'playing') this.spawnWave();
-    }, C.WAVE_INTERVAL);
+    const angle = Math.atan2(
+      C.MAP_HEIGHT / 2 + (Math.random() - 0.5) * 200 - y,
+      C.MAP_WIDTH / 2 + (Math.random() - 0.5) * 200 - x
+    );
+
+    const vertices = [];
+    for (let i = 0; i < C.PK_VERTEX_COUNT; i++) {
+      vertices.push(0.85 + Math.random() * 0.15);
+    }
+
+    return {
+      id: this._id(),
+      x, y,
+      vx: Math.cos(angle) * C.PK_ASTEROID_SPEED,
+      vy: Math.sin(angle) * C.PK_ASTEROID_SPEED,
+      radius: maxRadius,
+      maxRadius,
+      size: 'planet-killer',
+      hp: maxHp,
+      maxHp,
+      vertices,
+      rotation: Math.random() * Math.PI * 2,
+      rotationSpeed: (Math.random() - 0.5) * 0.005,
+    };
   }
 
   _createAsteroid(size, x, y) {
@@ -248,6 +294,34 @@ class Room {
 
     // Update asteroids
     for (const a of this.asteroids) {
+      // Planet killer hunts the nearest player
+      if (a.size === 'planet-killer') {
+        let closest = null;
+        let closestDist = Infinity;
+        for (const [, p] of this.players) {
+          if (!p.alive) continue;
+          const dx = p.x - a.x;
+          const dy = p.y - a.y;
+          const dist = dx * dx + dy * dy;
+          if (dist < closestDist) {
+            closestDist = dist;
+            closest = p;
+          }
+        }
+        if (closest) {
+          const angle = Math.atan2(closest.y - a.y, closest.x - a.x);
+          const turnRate = 0.02;
+          const currentAngle = Math.atan2(a.vy, a.vx);
+          let diff = angle - currentAngle;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          const newAngle = currentAngle + Math.sign(diff) * Math.min(Math.abs(diff), turnRate);
+          const speed = Math.sqrt(a.vx * a.vx + a.vy * a.vy);
+          a.vx = Math.cos(newAngle) * speed;
+          a.vy = Math.sin(newAngle) * speed;
+        }
+      }
+
       a.x += a.vx;
       a.y += a.vy;
       a.rotation += a.rotationSpeed;
@@ -275,21 +349,33 @@ class Room {
         }
       }
       if (hit) {
-        // Score
-        if (a.size === 'large') this.score += C.SCORE_LARGE;
-        else if (a.size === 'medium') this.score += C.SCORE_MEDIUM;
-        else this.score += C.SCORE_SMALL;
+        if (a.size === 'planet-killer') {
+          a.hp--;
+          this.score += C.PK_SCORE_PER_HP;
+          a.radius = C.PK_MIN_RADIUS + (a.maxRadius - C.PK_MIN_RADIUS) * (a.hp / a.maxHp);
 
-        // Split
-        if (a.size === 'large') {
-          newAsteroids.push(this._createAsteroid('medium', a.x, a.y));
-          newAsteroids.push(this._createAsteroid('medium', a.x, a.y));
-        } else if (a.size === 'medium') {
-          newAsteroids.push(this._createAsteroid('small', a.x, a.y));
-          newAsteroids.push(this._createAsteroid('small', a.x, a.y));
+          if (a.hp <= 0) {
+            this.score += C.PK_SCORE_KILL_BONUS;
+            this.asteroids.splice(ai, 1);
+            this.spawnWave();
+          }
+        } else {
+          // Score
+          if (a.size === 'large') this.score += C.SCORE_LARGE;
+          else if (a.size === 'medium') this.score += C.SCORE_MEDIUM;
+          else this.score += C.SCORE_SMALL;
+
+          // Split
+          if (a.size === 'large') {
+            newAsteroids.push(this._createAsteroid('medium', a.x, a.y));
+            newAsteroids.push(this._createAsteroid('medium', a.x, a.y));
+          } else if (a.size === 'medium') {
+            newAsteroids.push(this._createAsteroid('small', a.x, a.y));
+            newAsteroids.push(this._createAsteroid('small', a.x, a.y));
+          }
+
+          this.asteroids.splice(ai, 1);
         }
-
-        this.asteroids.splice(ai, 1);
       }
     }
     this.asteroids.push(...newAsteroids);
@@ -304,11 +390,11 @@ class Room {
         if (dx * dx + dy * dy < (a.radius + C.SHIP_RADIUS) * (a.radius + C.SHIP_RADIUS)) {
           if (p.upgrades.shield) {
             p.upgrades.shield = false;
-            this.asteroids.splice(ai, 1);
+            if (a.size !== 'planet-killer') this.asteroids.splice(ai, 1);
             break;
           }
           this.lives--;
-          this.asteroids.splice(ai, 1);
+          if (a.size !== 'planet-killer') this.asteroids.splice(ai, 1);
           // Respawn player at center
           p.x = C.MAP_WIDTH / 2 + (Math.random() - 0.5) * 200;
           p.y = C.MAP_HEIGHT / 2 + (Math.random() - 0.5) * 200;
@@ -349,6 +435,7 @@ class Room {
     }
 
     return {
+      mode: this.mode,
       state: this.state,
       players,
       asteroids: this.asteroids.map(a => ({
@@ -359,6 +446,8 @@ class Room {
         size: a.size,
         vertices: a.vertices,
         rotation: a.rotation,
+        hp: a.hp,
+        maxHp: a.maxHp,
       })),
       bullets: this.bullets.map(b => ({
         x: b.x,

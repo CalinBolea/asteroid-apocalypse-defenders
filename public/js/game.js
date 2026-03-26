@@ -2,6 +2,7 @@
   const params = new URLSearchParams(window.location.search);
   const roomCode = params.get('room');
   const playerName = params.get('name') || 'Player';
+  let gameMode = params.get('mode') || 'belt-chaos';
 
   if (!roomCode) {
     window.location.href = './';
@@ -39,6 +40,7 @@
   socket.on('room-joined', (data) => {
     playerId = data.playerId;
     roomPlayers = data.players;
+    if (data.mode) gameMode = data.mode;
     if (data.state === 'waiting') {
       startBtn.classList.remove('hidden');
     }
@@ -152,7 +154,7 @@
       }
     } else {
       // Waiting state
-      renderer.drawWaiting(roomPlayers, roomCode);
+      renderer.drawWaiting(roomPlayers, roomCode, gameMode);
     }
 
     requestAnimationFrame(render);

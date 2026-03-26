@@ -95,6 +95,33 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.mode-select {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.mode-option {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  color: #888;
+  font-size: 0.9rem;
+  transition: color 0.2s;
+}
+
+.mode-option:has(input:checked) {
+  color: #00ffff;
+}
+
+.mode-option input[type="radio"] {
+  width: auto;
+  margin: 0;
+  accent-color: #00ffff;
+}
+
 .divider {
   color: #444;
   margin: 1.5rem 0;

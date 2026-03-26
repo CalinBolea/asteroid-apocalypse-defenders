@@ -196,6 +196,66 @@ class Renderer {
     ctx.shadowBlur = 0;
   }
 
+  drawBase(base, cam) {
+    const ctx = this.ctx;
+    const pos = this.worldToScreen(base.x, base.y, cam);
+    const r = base.radius * cam.scale;
+
+    // Pulsing glow when HP is low
+    const lowHp = base.hp < base.maxHp * 0.3;
+    if (lowHp) {
+      ctx.save();
+      ctx.shadowColor = '#ff4444';
+      ctx.shadowBlur = 15 + Math.sin(Date.now() * 0.008) * 10;
+    }
+
+    // Base circle
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = '#1a2a4a';
+    ctx.fill();
+    ctx.save();
+    ctx.setLineDash([8, 6]);
+    ctx.strokeStyle = '#4488ff';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    if (lowHp) {
+      ctx.restore();
+    }
+
+    // HP bar
+    const barWidth = r * 2.5;
+    const barHeight = 8 * cam.scale;
+    const barX = pos.x - barWidth / 2;
+    const barY = pos.y - r - 22 * cam.scale;
+    const hpFraction = base.hp / base.maxHp;
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.fillRect(barX, barY, barWidth, barHeight);
+
+    const red = Math.min(255, Math.floor(510 * (1 - hpFraction)));
+    const green = Math.min(255, Math.floor(510 * hpFraction));
+    ctx.fillStyle = `rgb(${red}, ${green}, 0)`;
+    ctx.fillRect(barX, barY, barWidth * hpFraction, barHeight);
+
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(barX, barY, barWidth, barHeight);
+
+    // Label
+    ctx.fillStyle = '#4488ff';
+    ctx.font = `${Math.round(12 * cam.scale)}px Courier New`;
+    ctx.textAlign = 'center';
+    ctx.fillText('BASE', pos.x, barY - 6 * cam.scale);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `${Math.round(10 * cam.scale)}px Courier New`;
+    ctx.fillText(base.hp + '/' + base.maxHp, pos.x, barY - 18 * cam.scale);
+  }
+
   drawHUD(state) {
     const ctx = this.ctx;
     const padding = 20;
@@ -221,6 +281,24 @@ class Renderer {
       ctx.fillStyle = '#cc4422';
       ctx.font = '12px Courier New';
       ctx.fillText('PLANET KILLER', this.canvas.width / 2, 15);
+    } else if (state.mode === 'swarm-defense') {
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#4488ff';
+      ctx.font = '12px Courier New';
+      ctx.fillText('SWARM DEFENSE', this.canvas.width / 2, 15);
+
+      if (state.base) {
+        ctx.fillStyle = '#4488ff';
+        ctx.font = '14px Courier New';
+        ctx.fillText('BASE: ' + state.base.hp + '/' + state.base.maxHp, this.canvas.width / 2, 48);
+      }
+
+      if (state.swarmRemaining > 0) {
+        ctx.fillStyle = '#ff8844';
+        ctx.font = '12px Courier New';
+        ctx.textAlign = 'left';
+        ctx.fillText('INCOMING: ' + state.swarmRemaining, padding + 180, 33);
+      }
     }
   }
 
@@ -235,9 +313,11 @@ class Renderer {
     ctx.fillText('ROOM: ' + roomCode, cx, cy - 100);
 
     if (mode) {
-      ctx.fillStyle = mode === 'planet-killer' ? '#cc4422' : '#ffaa00';
+      const modeColors = { 'planet-killer': '#cc4422', 'swarm-defense': '#4488ff', 'belt-chaos': '#ffaa00' };
+      const modeLabels = { 'planet-killer': 'MODE: PLANET KILLER', 'swarm-defense': 'MODE: SWARM DEFENSE', 'belt-chaos': 'MODE: BELT CHAOS' };
+      ctx.fillStyle = modeColors[mode] || '#ffaa00';
       ctx.font = '16px Courier New';
-      ctx.fillText(mode === 'planet-killer' ? 'MODE: PLANET KILLER' : 'MODE: BELT CHAOS', cx, cy - 72);
+      ctx.fillText(modeLabels[mode] || 'MODE: ' + mode.toUpperCase(), cx, cy - 72);
     }
 
     ctx.fillStyle = '#e0e0ff';

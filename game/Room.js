@@ -17,6 +17,9 @@ class Room {
     this.waveTimeout = null;
     this.cleanupTimeout = null;
     this.nextEntityId = 1;
+    this.base = null;
+    this.swarmRemaining = 0;
+    this.swarmSpawnTimer = 0;
   }
 
   _id() {
@@ -96,6 +99,16 @@ class Room {
     this.asteroids = [];
     this.bullets = [];
 
+    if (this.mode === 'swarm-defense') {
+      this.base = {
+        x: C.MAP_WIDTH / 2,
+        y: C.MAP_HEIGHT / 2,
+        radius: C.SD_BASE_RADIUS,
+        hp: C.SD_BASE_HP,
+        maxHp: C.SD_BASE_HP,
+      };
+    }
+
     this.spawnWave();
 
     this.tickInterval = setInterval(() => this.tick(), 1000 / C.TICK_RATE);
@@ -129,6 +142,11 @@ class Room {
 
     if (this.mode === 'planet-killer') {
       this.asteroids.push(this._createPlanetKiller());
+    } else if (this.mode === 'swarm-defense') {
+      this.swarmRemaining = C.SD_SWARM_COUNT + (this.wave - 1) * C.SD_SWARM_INCREMENT;
+      this.swarmSpawnTimer = 0;
+      this.base.maxHp = C.SD_BASE_HP + (this.wave - 1) * C.SD_BASE_HP_INCREMENT;
+      this.base.hp = this.base.maxHp;
     } else {
       const count = C.WAVE_BASE_COUNT + (this.wave - 1) * C.WAVE_INCREMENT;
       for (let i = 0; i < count; i++) {
@@ -224,8 +242,54 @@ class Room {
     };
   }
 
+  _createSwarmAsteroid() {
+    const radius = C.ASTEROID_RADIUS_SMALL;
+    let x, y;
+    const edge = Math.floor(Math.random() * 4);
+    switch (edge) {
+      case 0: x = Math.random() * C.MAP_WIDTH; y = -radius; break;
+      case 1: x = C.MAP_WIDTH + radius; y = Math.random() * C.MAP_HEIGHT; break;
+      case 2: x = Math.random() * C.MAP_WIDTH; y = C.MAP_HEIGHT + radius; break;
+      case 3: x = -radius; y = Math.random() * C.MAP_HEIGHT; break;
+    }
+
+    const angle = Math.atan2(this.base.y - y, this.base.x - x) + (Math.random() - 0.5) * 0.2;
+    const speed = C.SD_SWARM_SPEED_MIN + Math.random() * (C.SD_SWARM_SPEED_MAX - C.SD_SWARM_SPEED_MIN);
+
+    const vertices = [];
+    const numVertices = 5 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < numVertices; i++) {
+      vertices.push(0.7 + Math.random() * 0.3);
+    }
+
+    return {
+      id: this._id(),
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      radius,
+      size: 'small',
+      vertices,
+      rotation: Math.random() * Math.PI * 2,
+      rotationSpeed: (Math.random() - 0.5) * 0.06,
+    };
+  }
+
   tick() {
     if (this.state !== 'playing') return;
+
+    // Swarm spawning
+    if (this.mode === 'swarm-defense' && this.swarmRemaining > 0) {
+      this.swarmSpawnTimer--;
+      if (this.swarmSpawnTimer <= 0) {
+        const batch = Math.min(C.SD_SPAWN_BATCH, this.swarmRemaining);
+        for (let i = 0; i < batch; i++) {
+          this.asteroids.push(this._createSwarmAsteroid());
+        }
+        this.swarmRemaining -= batch;
+        this.swarmSpawnTimer = C.SD_SPAWN_INTERVAL;
+      }
+    }
 
     // Update players
     for (const [, p] of this.players) {
@@ -327,10 +391,23 @@ class Room {
       a.rotation += a.rotationSpeed;
 
       // Wrap around
-      if (a.x < -a.radius * 2) a.x = C.MAP_WIDTH + a.radius;
-      if (a.x > C.MAP_WIDTH + a.radius * 2) a.x = -a.radius;
-      if (a.y < -a.radius * 2) a.y = C.MAP_HEIGHT + a.radius;
-      if (a.y > C.MAP_HEIGHT + a.radius * 2) a.y = -a.radius;
+      if (this.mode !== 'swarm-defense') {
+        if (a.x < -a.radius * 2) a.x = C.MAP_WIDTH + a.radius;
+        if (a.x > C.MAP_WIDTH + a.radius * 2) a.x = -a.radius;
+        if (a.y < -a.radius * 2) a.y = C.MAP_HEIGHT + a.radius;
+        if (a.y > C.MAP_HEIGHT + a.radius * 2) a.y = -a.radius;
+      }
+    }
+
+    // Remove out-of-bounds asteroids in swarm-defense
+    if (this.mode === 'swarm-defense') {
+      for (let i = this.asteroids.length - 1; i >= 0; i--) {
+        const a = this.asteroids[i];
+        if (a.x < -a.radius * 2 || a.x > C.MAP_WIDTH + a.radius * 2 ||
+            a.y < -a.radius * 2 || a.y > C.MAP_HEIGHT + a.radius * 2) {
+          this.asteroids.splice(i, 1);
+        }
+      }
     }
 
     // Bullet-asteroid collisions
@@ -359,6 +436,9 @@ class Room {
             this.asteroids.splice(ai, 1);
             this.spawnWave();
           }
+        } else if (this.mode === 'swarm-defense') {
+          this.score += C.SD_SCORE_PER_ASTEROID;
+          this.asteroids.splice(ai, 1);
         } else {
           // Score
           if (a.size === 'large') this.score += C.SCORE_LARGE;
@@ -414,6 +494,34 @@ class Room {
         }
       }
     }
+
+    // Asteroid-base collisions (swarm-defense)
+    if (this.mode === 'swarm-defense' && this.base) {
+      for (let ai = this.asteroids.length - 1; ai >= 0; ai--) {
+        const a = this.asteroids[ai];
+        const dx = a.x - this.base.x;
+        const dy = a.y - this.base.y;
+        if (dx * dx + dy * dy < (a.radius + this.base.radius) * (a.radius + this.base.radius)) {
+          this.base.hp--;
+          this.asteroids.splice(ai, 1);
+          if (this.base.hp <= 0) {
+            this.state = 'gameover';
+            this.io.to(this.code).emit('game-over', { score: this.score, wave: this.wave });
+            clearInterval(this.tickInterval);
+            clearInterval(this.broadcastInterval);
+            clearTimeout(this.waveTimeout);
+            this.cleanupTimeout = setTimeout(() => this.destroy(), 30000);
+            return;
+          }
+        }
+      }
+    }
+
+    // Swarm wave completion check
+    if (this.mode === 'swarm-defense' && this.swarmRemaining === 0 && this.asteroids.length === 0) {
+      this.score += C.SD_WAVE_COMPLETE_BONUS;
+      this.spawnWave();
+    }
   }
 
   getSnapshot() {
@@ -456,6 +564,8 @@ class Room {
       score: this.score,
       lives: this.lives,
       wave: this.wave,
+      base: this.base,
+      swarmRemaining: this.swarmRemaining,
     };
   }
 

@@ -131,6 +131,7 @@
       if (gameState) {
         const cam = renderer.getCamera(playerId, gameState.players);
         renderer.drawGrid(cam);
+        if (gameState.base) renderer.drawBase(gameState.base, cam);
         gameState.asteroids.forEach(a => renderer.drawAsteroid(a, cam));
         gameState.players.forEach(p => renderer.drawShip(p, cam));
       }
@@ -138,6 +139,7 @@
     } else if (gameState && gameState.state === 'playing') {
       const cam = renderer.getCamera(playerId, gameState.players);
       renderer.drawGrid(cam);
+      if (gameState.base) renderer.drawBase(gameState.base, cam);
       gameState.bullets.forEach(b => renderer.drawBullet(b, cam));
       gameState.asteroids.forEach(a => renderer.drawAsteroid(a, cam));
       gameState.players.forEach(p => renderer.drawShip(p, cam));
@@ -145,6 +147,7 @@
     } else if (gameState && gameState.state === 'upgrading') {
       const cam = renderer.getCamera(playerId, gameState.players);
       renderer.drawGrid(cam);
+      if (gameState.base) renderer.drawBase(gameState.base, cam);
       gameState.asteroids.forEach(a => renderer.drawAsteroid(a, cam));
       gameState.players.forEach(p => renderer.drawShip(p, cam));
       renderer.drawHUD(gameState);

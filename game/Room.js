@@ -348,9 +348,9 @@ class Room {
     if (char.toLowerCase() !== expected) return;
 
     player.charIndex++;
-    this._fireAtNearest(player);
 
     if (player.charIndex >= player.currentWord.length) {
+      this._fireAtNearest(player);
       this.score += C.TD_WORD_COMPLETE_BONUS;
       player.wordsCompleted++;
       player.currentWord = this._assignWord();
